@@ -1,4 +1,6 @@
 import Foundation
+import Security
+import CommonCrypto
 
 struct MollieTerminal: Identifiable, Codable {
     let id: String
@@ -58,25 +60,34 @@ enum MollieServiceError: LocalizedError {
     }
 }
 
-class MollieService {
+/*
+echo | openssl s_client -connect api.mollie.com:443 -servername api.mollie.com 2>/dev/null  | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | base64
+*/
+
+class MollieService: PaymentServicing {
     private let baseURL = "https://api.mollie.com/v2"
+    private let session: URLSession
+
+    init() {
+        let pinningDelegate = CertificatePinningDelegate()
+        session = URLSession(configuration: .default, delegate: pinningDelegate, delegateQueue: nil)
+    }
 
     func listTerminals(apiKey: String) async throws -> [MollieTerminal] {
-        let url = URL(string: "\(baseURL)/terminals")!
+        guard let url = URL(string: "\(baseURL)/terminals") else {
+            throw MollieServiceError.apiError("Invalid URL configuration")
+        }
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MollieServiceError.apiError("Invalid response")
         }
 
         if httpResponse.statusCode != 200 {
-            if let errorResponse = try? JSONDecoder().decode(MollieErrorResponse.self, from: data) {
-                throw MollieServiceError.apiError(errorResponse.detail)
-            }
-            throw MollieServiceError.apiError("HTTP \(httpResponse.statusCode)")
+            throw MollieServiceError.apiError(sanitizedError(from: data, statusCode: httpResponse.statusCode))
         }
 
         let decoded = try JSONDecoder().decode(MollieTerminalsResponse.self, from: data)
@@ -90,7 +101,9 @@ class MollieService {
         description: String,
         referenceId: String
     ) async throws -> MolliePaymentResponse {
-        let url = URL(string: "\(baseURL)/payments")!
+        guard let url = URL(string: "\(baseURL)/payments") else {
+            throw MollieServiceError.apiError("Invalid URL configuration")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
@@ -122,25 +135,111 @@ class MollieService {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw MollieServiceError.apiError("Invalid response")
         }
 
         if httpResponse.statusCode != 201 {
-            if let errorResponse = try? JSONDecoder().decode(MollieErrorResponse.self, from: data) {
-                throw MollieServiceError.apiError(errorResponse.detail)
-            }
-            throw MollieServiceError.apiError("HTTP \(httpResponse.statusCode)")
+            throw MollieServiceError.apiError(sanitizedError(from: data, statusCode: httpResponse.statusCode))
         }
 
         return try JSONDecoder().decode(MolliePaymentResponse.self, from: data)
     }
 
+    /// Returns a user-safe error message, stripping internal API details
+    private func sanitizedError(from data: Data, statusCode: Int) -> String {
+        if let errorResponse = try? JSONDecoder().decode(MollieErrorResponse.self, from: data) {
+            // Map known error titles to user-friendly messages
+            switch errorResponse.title {
+            case "Unauthorized":
+                return "Invalid API key. Check your credentials in Settings."
+            case "Unprocessable Entity":
+                return "The payment could not be processed. Please check the amount and try again."
+            case "Not Found":
+                return "Terminal not found. Please re-select your terminal in Settings."
+            default:
+                return "Payment service error (\(statusCode)). Please try again."
+            }
+        }
+        return "Request failed (\(statusCode)). Please try again."
+    }
+
     /// Generates a PrestaShop-style order reference (9 uppercase alphanumeric characters)
-    static func generateReference() -> String {
-        let chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-        return String((0..<9).map { _ in chars.randomElement()! })
+    func generateReference() -> String {
+        let chars = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ")
+        var bytes = [UInt8](repeating: 0, count: 9)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        return String(bytes.map { chars[Int($0) % chars.count] })
     }
 }
+// MARK: - Certificate Pinning
+
+private class CertificatePinningDelegate: NSObject, URLSessionDelegate {
+    // SHA-256 hashes of pinned public keys (base64-encoded)
+    // Leaf certificate for api.mollie.com
+    // Intermediate CA as backup (survives leaf rotation)
+    private let pinnedKeyHashes: Set<String> = [
+        "Yqts8V/ZiwfReBSVHqGoLllps+7v8U/5PW/oUjU/GWw=",
+        "OdSlmQD9NWJh4EbcOHBxkhygPwNSwA9Q91eounfbcoE="
+    ]
+
+    func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              challenge.protectionSpace.host == "api.mollie.com",
+              let serverTrust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        // Evaluate the trust chain first
+        var error: CFError?
+        guard SecTrustEvaluateWithError(serverTrust, &error) else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+
+        // Check each certificate in the chain against our pinned hashes
+        let certificateCount = SecTrustGetCertificateCount(serverTrust)
+        for index in 0..<certificateCount {
+            guard let certificate = SecTrustCopyCertificateChain(serverTrust)
+                .map({ $0 as! [SecCertificate] })?[safe: index] else {
+                continue
+            }
+
+            if let publicKey = SecCertificateCopyKey(certificate),
+               let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as? Data {
+                let hash = sha256(data: publicKeyData)
+                let hashBase64 = hash.base64EncodedString()
+
+                if pinnedKeyHashes.contains(hashBase64) {
+                    completionHandler(.useCredential, URLCredential(trust: serverTrust))
+                    return
+                }
+            }
+        }
+
+        // No matching pin found — reject the connection
+        completionHandler(.cancelAuthenticationChallenge, nil)
+    }
+
+    private func sha256(data: Data) -> Data {
+        var hash = [UInt8](repeating: 0, count: 32)
+        data.withUnsafeBytes { buffer in
+            _ = CC_SHA256(buffer.baseAddress, CC_LONG(data.count), &hash)
+        }
+        return Data(hash)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
+    }
+}
+

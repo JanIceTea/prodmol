@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 @Observable
-class CartManager {
+class CartManager: CartManaging {
     var items: [CartItem] = []
 
     var totalAmount: Decimal {

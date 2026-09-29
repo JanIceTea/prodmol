@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct SettingsView: View {
-    var settings: AppSettings
-    private let mollieService = MollieService()
+    var settings: any SettingsProviding
+    private let mollieService: any PaymentServicing = MollieService()
 
     @State private var terminals: [MollieTerminal] = []
     @State private var isLoadingTerminals = false
@@ -11,7 +11,10 @@ struct SettingsView: View {
     var body: some View {
         Form {
             Section("Mollie API") {
-                SecureField("API Key", text: Bindable(settings).apiKey)
+                SecureField("API Key", text: Binding(
+                    get: { settings.apiKey },
+                    set: { settings.apiKey = $0 }
+                ))
                     .textContentType(.password)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)

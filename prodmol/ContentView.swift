@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ContentView: View {
-    @State private var store = ProductStore()
-    @State private var cart = CartManager()
-    var settings: AppSettings
+    @State private var store: any ProductStoring = ProductStore()
+    @State private var cart: any CartManaging = CartManager()
+    var settings: any SettingsProviding
 
     @State private var showingAddProduct = false
     @State private var showingCart = false

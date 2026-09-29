@@ -2,10 +2,14 @@ import SwiftUI
 import Observation
 
 @Observable
-class ProductStore {
+class ProductStore: ProductStoring {
     var products: [Product] = []
 
-    private let storageKey = "savedProducts"
+    private static var fileURL: URL {
+        FileManager.default
+            .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("products.json")
+    }
 
     init() {
         load()
@@ -27,13 +31,18 @@ class ProductStore {
     }
 
     private func save() {
-        if let data = try? JSONEncoder().encode(products) {
-            UserDefaults.standard.set(data, forKey: storageKey)
+        do {
+            let dir = Self.fileURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let data = try JSONEncoder().encode(products)
+            try data.write(to: Self.fileURL, options: [.atomic, .completeFileProtection])
+        } catch {
+            // Silently fail — product data is non-critical
         }
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
+        guard let data = try? Data(contentsOf: Self.fileURL),
               let decoded = try? JSONDecoder().decode([Product].self, from: data) else {
             return
         }

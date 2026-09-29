@@ -2,8 +2,8 @@ import SwiftUI
 
 struct CartView: View {
     @Environment(\.dismiss) private var dismiss
-    var cart: CartManager
-    var settings: AppSettings
+    var cart: any CartManaging
+    var settings: any SettingsProviding
 
     var body: some View {
         NavigationStack {
@@ -65,13 +65,13 @@ struct CartView: View {
 // MARK: - Checkout Button (shared between CartView sheet and sidebar)
 
 struct CheckoutButton: View {
-    var cart: CartManager
-    var settings: AppSettings
+    var cart: any CartManaging
+    var settings: any SettingsProviding
 
     @State private var isProcessing = false
     @State private var paymentResult: PaymentResult?
 
-    private let mollieService = MollieService()
+    private let mollieService: any PaymentServicing = MollieService()
 
     var body: some View {
         Button(action: checkout) {
@@ -109,10 +109,11 @@ struct CheckoutButton: View {
     }
 
     private func checkout() {
-        guard let terminalId = settings.selectedTerminalId else { return }
+        guard let terminalId = settings.selectedTerminalId,
+              !isProcessing else { return }
 
         isProcessing = true
-        let reference = MollieService.generateReference()
+        let reference = mollieService.generateReference()
         let description = "\(reference) — \(cart.description)"
         let amount = cart.totalAmount
 
@@ -150,7 +151,7 @@ struct PaymentResult {
 
 struct CartItemRow: View {
     let item: CartItem
-    var cart: CartManager
+    var cart: any CartManaging
 
     var body: some View {
         HStack {
