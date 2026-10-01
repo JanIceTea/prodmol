@@ -54,6 +54,7 @@ struct SettingsView: View {
                 .disabled(settings.apiKey.isEmpty || isLoadingTerminals)
 
                 ForEach(terminals) { terminal in
+                    let isActive = terminal.status == "active"
                     Button {
                         settings.selectedTerminalId = terminal.id
                         settings.selectedTerminalDescription = terminal.description
@@ -62,10 +63,15 @@ struct SettingsView: View {
                             VStack(alignment: .leading) {
                                 Text(terminal.description)
                                     .font(.body)
-                                    .foregroundStyle(.primary)
-                                Text("\(terminal.id) · \(terminal.status)")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(isActive ? .primary : .secondary)
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(isActive ? .green : .red)
+                                        .frame(width: 8, height: 8)
+                                    Text("\(terminal.id) · \(terminal.status)")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             }
                             Spacer()
                             if settings.selectedTerminalId == terminal.id {
@@ -74,6 +80,7 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    .disabled(!isActive)
                 }
             }
 
@@ -97,7 +104,9 @@ struct SettingsView: View {
             do {
                 terminals = try await mollieService.listTerminals(apiKey: settings.apiKey)
                 if terminals.isEmpty {
-                    errorMessage = "No terminals found. Make sure the Mollie Tap app is set up."
+                    errorMessage = "No terminals found. Make sure the Mollie Tap app is set up and paired."
+                } else if !terminals.contains(where: { $0.status == "active" }) {
+                    errorMessage = "No active terminals found. Open the Mollie Tap app and complete the setup to activate a terminal."
                 }
             } catch {
                 errorMessage = error.localizedDescription

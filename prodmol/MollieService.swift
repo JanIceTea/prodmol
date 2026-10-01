@@ -177,12 +177,21 @@ class MollieService: PaymentServicing {
 // MARK: - Certificate Pinning
 
 private class CertificatePinningDelegate: NSObject, URLSessionDelegate {
-    // SHA-256 hashes of pinned public keys (base64-encoded)
+    // SHA-256 hashes of SPKI (SubjectPublicKeyInfo) pinned public keys (base64-encoded)
     // Leaf certificate for api.mollie.com
     // Intermediate CA as backup (survives leaf rotation)
     private let pinnedKeyHashes: Set<String> = [
         "Yqts8V/ZiwfReBSVHqGoLllps+7v8U/5PW/oUjU/GWw=",
         "OdSlmQD9NWJh4EbcOHBxkhygPwNSwA9Q91eounfbcoE="
+    ]
+
+    // ASN.1 header for RSA 2048-bit SubjectPublicKeyInfo
+    // SecKeyCopyExternalRepresentation returns raw key bytes without this header,
+    // but openssl and standard SPKI pinning includes it before hashing.
+    private static let rsa2048SPKIHeader: [UInt8] = [
+        0x30, 0x82, 0x01, 0x22, 0x30, 0x0d, 0x06, 0x09, 0x2a, 0x86,
+        0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01, 0x05, 0x00, 0x03,
+        0x82, 0x01, 0x0f, 0x00
     ]
 
     func urlSession(
@@ -204,17 +213,20 @@ private class CertificatePinningDelegate: NSObject, URLSessionDelegate {
             return
         }
 
-        // Check each certificate in the chain against our pinned hashes
-        let certificateCount = SecTrustGetCertificateCount(serverTrust)
-        for index in 0..<certificateCount {
-            guard let certificate = SecTrustCopyCertificateChain(serverTrust)
-                .map({ $0 as! [SecCertificate] })?[safe: index] else {
-                continue
-            }
+        // Check each certificate in the chain against our pinned SPKI hashes
+        guard let certificates = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
 
+        for certificate in certificates {
             if let publicKey = SecCertificateCopyKey(certificate),
                let publicKeyData = SecKeyCopyExternalRepresentation(publicKey, nil) as? Data {
-                let hash = sha256(data: publicKeyData)
+                // Prepend ASN.1 SPKI header to match openssl's SPKI hash
+                var spkiData = Data(Self.rsa2048SPKIHeader)
+                spkiData.append(publicKeyData)
+
+                let hash = sha256(data: spkiData)
                 let hashBase64 = hash.base64EncodedString()
 
                 if pinnedKeyHashes.contains(hashBase64) {
@@ -234,12 +246,6 @@ private class CertificatePinningDelegate: NSObject, URLSessionDelegate {
             _ = CC_SHA256(buffer.baseAddress, CC_LONG(data.count), &hash)
         }
         return Data(hash)
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
     }
 }
 
