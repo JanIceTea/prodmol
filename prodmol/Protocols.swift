@@ -7,6 +7,7 @@ protocol ProductStoring: AnyObject, Observable {
     func add(_ product: Product)
     func delete(at offsets: IndexSet)
     func delete(_ product: Product)
+    func deleteAllEventProducts()
 }
 
 // MARK: - CartManaging
@@ -35,6 +36,34 @@ protocol PaymentServicing {
         referenceId: String
     ) async throws -> MolliePaymentResponse
     func generateReference() -> String
+}
+
+// MARK: - PretixOAuthServicing
+
+protocol PretixOAuthServicing: AnyObject {
+    var isAuthenticated: Bool { get }
+    func openAuthorizationPage(clientID: String, redirectURI: String)
+    func exchangeCode(_ callbackInput: String, clientID: String, clientSecret: String, redirectURI: String) async throws
+    func getAccessToken() async throws -> String
+    func logout()
+}
+
+// MARK: - PretixAPIServicing
+
+protocol PretixAPIServicing {
+    func fetchEvents(organizer: String) async throws -> [PretixEventResponse]
+    func fetchItems(organizer: String, eventSlug: String) async throws -> [PretixItemResponse]
+}
+
+// MARK: - PretixSettingsProviding
+
+protocol PretixSettingsProviding: AnyObject, Observable {
+    var clientID: String { get set }
+    var clientSecret: String { get set }
+    var organizerSlug: String { get set }
+    var redirectURI: String { get set }
+    var isConfigured: Bool { get }
+    var isAuthenticated: Bool { get set }
 }
 
 // MARK: - SettingsProviding

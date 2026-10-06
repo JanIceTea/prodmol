@@ -30,6 +30,11 @@ class ProductStore: ProductStoring {
         save()
     }
 
+    func deleteAllEventProducts() {
+        products.removeAll { $0.eventName != nil }
+        save()
+    }
+
     private func save() {
         do {
             let dir = Self.fileURL.deletingLastPathComponent()

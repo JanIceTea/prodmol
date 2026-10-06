@@ -21,7 +21,12 @@ class CartManager: CartManaging {
     }
 
     var description: String {
-        items.map { "\($0.quantity)x \($0.product.name)" }.joined(separator: ", ")
+        items.map { item in
+            if let eventName = item.product.eventName {
+                return "\(eventName): \(item.quantity)x \(item.product.name)"
+            }
+            return "\(item.quantity)x \(item.product.name)"
+        }.joined(separator: ", ")
     }
 
     func addProduct(_ product: Product) {

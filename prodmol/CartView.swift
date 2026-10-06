@@ -114,7 +114,10 @@ struct CheckoutButton: View {
 
         isProcessing = true
         let reference = mollieService.generateReference()
-        let description = "\(reference) — \(cart.description)"
+        let prefix = "\(reference) — "
+        let maxDescriptionLength = 255
+        let itemsDescription = String(cart.description.prefix(maxDescriptionLength - prefix.count))
+        let description = prefix + itemsDescription
         let amount = cart.totalAmount
 
         Task {

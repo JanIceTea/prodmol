@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     var settings: any SettingsProviding
+    var pretixSettings: (any PretixSettingsProviding)?
+    var pretixOAuth: (any PretixOAuthServicing)?
     private let mollieService: any PaymentServicing = MollieService()
 
     @State private var terminals: [MollieTerminal] = []
@@ -20,7 +22,7 @@ struct SettingsView: View {
                     .textInputAutocapitalization(.never)
             }
 
-            Section("Terminal") {
+            if FeatureToggles.terminalSelection { Section("Terminal") {
                 if let terminal = settings.selectedTerminalId,
                    let description = settings.selectedTerminalDescription {
                     HStack {
@@ -81,6 +83,31 @@ struct SettingsView: View {
                         }
                     }
                     .disabled(!isActive)
+                }
+            } }
+
+            if FeatureToggles.pretixEvents,
+               let pretixSettings,
+               let pretixOAuth {
+                Section("Pretix Events") {
+                    NavigationLink {
+                        PretixSettingsView(
+                            settings: pretixSettings,
+                            oauthService: pretixOAuth
+                        )
+                    } label: {
+                        HStack {
+                            Text("Pretix Configuration")
+                            Spacer()
+                            if pretixSettings.isAuthenticated {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                            } else {
+                                Text("Not connected")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
             }
 

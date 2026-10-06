@@ -8,6 +8,16 @@ struct ProductGridView: View {
         GridItem(.adaptive(minimum: 140), spacing: 12)
     ]
 
+    private var regularProducts: [Product] {
+        products.filter { $0.eventName == nil }
+    }
+
+    private var eventGroups: [(name: String, products: [Product])] {
+        let eventProducts = products.filter { $0.eventName != nil }
+        let grouped = Dictionary(grouping: eventProducts) { $0.eventName! }
+        return grouped.sorted { $0.key < $1.key }.map { (name: $0.key, products: $0.value) }
+    }
+
     var body: some View {
         if products.isEmpty {
             ContentUnavailableView(
@@ -17,14 +27,32 @@ struct ProductGridView: View {
             )
         } else {
             ScrollView {
-                LazyVGrid(columns: columns, spacing: 12) {
-                    ForEach(products) { product in
-                        ProductTile(product: product) {
-                            onProductTapped(product)
-                        }
+                VStack(alignment: .leading, spacing: 20) {
+                    if !regularProducts.isEmpty {
+                        productSection(title: "Products", items: regularProducts)
+                    }
+
+                    ForEach(eventGroups, id: \.name) { group in
+                        productSection(title: group.name, items: group.products)
                     }
                 }
                 .padding()
+            }
+        }
+    }
+
+    private func productSection(title: String, items: [Product]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.title3.bold())
+                .padding(.horizontal, 4)
+
+            LazyVGrid(columns: columns, spacing: 12) {
+                ForEach(items) { product in
+                    ProductTile(product: product) {
+                        onProductTapped(product)
+                    }
+                }
             }
         }
     }

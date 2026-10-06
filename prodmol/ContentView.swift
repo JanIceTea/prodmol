@@ -4,9 +4,12 @@ struct ContentView: View {
     @State private var store: any ProductStoring = ProductStore()
     @State private var cart: any CartManaging = CartManager()
     var settings: any SettingsProviding
+    var pretixSettings: any PretixSettingsProviding
+    var pretixOAuth: any PretixOAuthServicing
 
     @State private var showingAddProduct = false
     @State private var showingCart = false
+    @State private var showingPretixEvents = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
@@ -33,21 +36,35 @@ struct ContentView: View {
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
                         HStack {
-                            NavigationLink {
-                                SettingsView(settings: settings)
-                            } label: {
-                                Image(systemName: "gearshape")
+                            if FeatureToggles.settings {
+                                NavigationLink {
+                                    settingsDestination
+                                } label: {
+                                    Image(systemName: "gearshape")
+                                }
                             }
-                            Button {
-                                showingAddProduct = true
-                            } label: {
-                                Image(systemName: "plus")
+                            if FeatureToggles.pretixEvents {
+                                Button {
+                                    showingPretixEvents = true
+                                } label: {
+                                    Image(systemName: "calendar.badge.plus")
+                                }
+                            }
+                            if FeatureToggles.addProducts {
+                                Button {
+                                    showingAddProduct = true
+                                } label: {
+                                    Image(systemName: "plus")
+                                }
                             }
                         }
                     }
                 }
                 .sheet(isPresented: $showingAddProduct) {
                     AddProductView(store: store)
+                }
+                .sheet(isPresented: $showingPretixEvents) {
+                    pretixEventList
                 }
             }
         }
@@ -79,16 +96,18 @@ struct ContentView: View {
                         }
                     }
 
-                    Section {
-                        CheckoutButton(
-                            cart: cart,
-                            settings: settings
-                        )
+                    if FeatureToggles.checkout {
+                        Section {
+                            CheckoutButton(
+                                cart: cart,
+                                settings: settings
+                            )
 
-                        if !settings.isConfigured {
-                            Text("Configure your API key and terminal in Settings first.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            if !settings.isConfigured {
+                                Text("Configure your API key and terminal in Settings first.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                     }
                 }
@@ -113,30 +132,45 @@ struct ContentView: View {
             }
             .navigationTitle("Products")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink {
-                        SettingsView(settings: settings)
-                    } label: {
-                        Image(systemName: "gearshape")
+                if FeatureToggles.settings {
+                    ToolbarItem(placement: .topBarLeading) {
+                        NavigationLink {
+                            settingsDestination
+                        } label: {
+                            Image(systemName: "gearshape")
+                        }
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showingAddProduct = true
-                    } label: {
-                        Image(systemName: "plus")
+                    HStack {
+                        if FeatureToggles.pretixEvents {
+                            Button {
+                                showingPretixEvents = true
+                            } label: {
+                                Image(systemName: "calendar.badge.plus")
+                            }
+                        }
+                        if FeatureToggles.addProducts {
+                            Button {
+                                showingAddProduct = true
+                            } label: {
+                                Image(systemName: "plus")
+                            }
+                        }
                     }
                 }
-                ToolbarItem(placement: .bottomBar) {
-                    if !cart.isEmpty {
-                        Button {
-                            showingCart = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "cart")
-                                Text("\(cart.items.count) items — \(cart.formattedTotal)")
+                if FeatureToggles.checkout {
+                    ToolbarItem(placement: .bottomBar) {
+                        if !cart.isEmpty {
+                            Button {
+                                showingCart = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "cart")
+                                    Text("\(cart.items.count) items — \(cart.formattedTotal)")
+                                }
+                                .font(.headline)
                             }
-                            .font(.headline)
                         }
                     }
                 }
@@ -147,10 +181,35 @@ struct ContentView: View {
             .sheet(isPresented: $showingCart) {
                 CartView(cart: cart, settings: settings)
             }
+            .sheet(isPresented: $showingPretixEvents) {
+                pretixEventList
+            }
         }
+    }
+
+    // MARK: - Shared Destinations
+
+    private var settingsDestination: some View {
+        SettingsView(
+            settings: settings,
+            pretixSettings: pretixSettings,
+            pretixOAuth: pretixOAuth
+        )
+    }
+
+    private var pretixEventList: some View {
+        PretixEventListView(
+            store: store,
+            pretixSettings: pretixSettings,
+            apiService: PretixAPIService(oauthService: pretixOAuth)
+        )
     }
 }
 
 #Preview {
-    ContentView(settings: AppSettings())
+    ContentView(
+        settings: AppSettings(),
+        pretixSettings: PretixSettings(),
+        pretixOAuth: PretixOAuthService()
+    )
 }

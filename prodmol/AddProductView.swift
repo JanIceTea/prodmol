@@ -29,29 +29,94 @@ struct AddProductView: View {
             && (price ?? 0) <= Self.maxPrice
     }
 
+    private var regularProducts: [Product] {
+        store.products.filter { $0.eventName == nil }
+    }
+
+    private var eventProducts: [Product] {
+        store.products.filter { $0.eventName != nil }
+    }
+
     var body: some View {
         NavigationStack {
             Form {
-                Section("Product Details") {
-                    TextField("Name", text: $name)
-                    TextField("Price", text: $priceText)
-                        .keyboardType(.decimalPad)
+                if FeatureToggles.addProducts {
+                    Section("New Product") {
+                        TextField("Name", text: $name)
+                        TextField("Price", text: $priceText)
+                            .keyboardType(.decimalPad)
+
+                        Button("Add") {
+                            if let price {
+                                store.add(Product(name: sanitizedName, price: price))
+                                name = ""
+                                priceText = ""
+                            }
+                        }
+                        .disabled(!isValid)
+                    }
                 }
-            }
-            .navigationTitle("Add Product")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Add") {
-                        if let price {
-                            store.add(Product(name: sanitizedName, price: price))
-                            dismiss()
+
+                if !regularProducts.isEmpty {
+                    Section("Products") {
+                        ForEach(regularProducts) { product in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(product.name)
+                                    Text(product.formattedPrice)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if FeatureToggles.deleteProducts {
+                                    Button(role: .destructive) {
+                                        store.delete(product)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                }
+                            }
                         }
                     }
-                    .disabled(!isValid)
+                }
+
+                if !eventProducts.isEmpty {
+                    Section {
+                        ForEach(eventProducts) { product in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(product.name)
+                                    Text("\(product.eventName ?? "") · \(product.formattedPrice)")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if FeatureToggles.deleteProducts {
+                                    Button(role: .destructive) {
+                                        store.delete(product)
+                                    } label: {
+                                        Image(systemName: "trash")
+                                    }
+                                }
+                            }
+                        }
+                    } header: {
+                        Text("Event Tickets")
+                    } footer: {
+                        if FeatureToggles.deleteProducts {
+                            Button("Remove All Event Tickets", role: .destructive) {
+                                store.deleteAllEventProducts()
+                            }
+                            .font(.callout)
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Manage Products")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
                 }
             }
         }

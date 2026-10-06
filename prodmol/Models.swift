@@ -4,6 +4,7 @@ struct Product: Identifiable, Codable, Hashable {
     var id: UUID
     var name: String
     var price: Decimal
+    var eventName: String?
 
     var formattedPrice: String {
         let formatter = NumberFormatter()
@@ -12,10 +13,11 @@ struct Product: Identifiable, Codable, Hashable {
         return formatter.string(from: price as NSDecimalNumber) ?? "€\(price)"
     }
 
-    init(id: UUID = UUID(), name: String, price: Decimal) {
+    init(id: UUID = UUID(), name: String, price: Decimal, eventName: String? = nil) {
         self.id = id
         self.name = name
         self.price = price
+        self.eventName = eventName
     }
 }
 
